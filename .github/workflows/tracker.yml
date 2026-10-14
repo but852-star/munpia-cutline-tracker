@@ -1,0 +1,72 @@
+# Active hourly collection and GitHub Pages deployment.
+name: Collect cutlines and publish
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'scripts/**'
+      - '.github/workflows/tracker.yml'
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: munpia-records-and-pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify code
+        run: python -m unittest discover -s tests -p 'test_*.py'
+      - name: Collect rankings
+        id: collect
+        continue-on-error: true
+        run: python scripts/collect.py
+      - name: Preserve records and status
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add site/data
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record cutlines and collection status'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Enable collection status for GitHub Pages
+        run: |
+          printf '%s\n' 'globalThis.CUTLINE_CONFIG = { automaticCollection: true, remoteDataBase: "" };' > site/config.js
+      - name: Build static site
+        run: python scripts/build.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+          retention-days: 1
+      - name: Publish to Pages
+        id: publish
+        uses: actions/deploy-pages@v4
+      - name: Report collection failures after publishing preserved records
+        if: steps.collect.outcome == 'failure'
+        run: |
+          echo 'Collection failed. Preserved history and failure status have been published.'
+          exit 1
+
