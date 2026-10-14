@@ -1,0 +1,16 @@
+const assert = require('node:assert/strict');
+require('../site/app.js');
+const {kstParts,hourSeries,weekdayStats} = globalThis.CutlineStats;
+const record=(timestamp,views)=>({timestamp,cutlines:{'200':{views}}});
+assert.equal(kstParts('2026-09-30T15:00:00Z').day,'2026-10-01');
+assert.equal(kstParts('2026-09-30T15:00:00Z').hour,0);
+const records=[record('2026-10-12T02:00:00+09:00',100),record('2026-10-12T04:00:00+09:00',200),record('2026-10-12T02:30:00+09:00',150)];
+const hours=hourSeries(records);
+assert.equal(hours[2].cutlines['200'].views,150);
+assert.equal(hours[3],null);
+const stats=weekdayStats(records.concat(record('2026-10-01T01:00:00+09:00',1)),'2026-10-12T05:00:00+09:00');
+assert.equal(stats[1].low.hour,2);
+assert.equal(stats[1].low.average,125);
+assert.equal(stats[1].high.hour,4);
+assert.equal(stats[4].low,null);
+console.log('PASS: KST, missing hours, retries, weekday comparison and date window');
