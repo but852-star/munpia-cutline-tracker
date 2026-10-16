@@ -101,15 +101,35 @@
     const width=760,height=280,left=64,right=22,top=25,bottom=42;
     const min=Math.min(...values),max=Math.max(...values),margin=Math.max(5,(max-min)*.15),lower=Math.max(0,min-margin),upper=max+margin;
     const x=h=>left+h*(width-left-right)/23,y=v=>top+(upper-v)*(height-top-bottom)/(upper-lower);
-    const svg=svgNode('svg',{viewBox:`0 0 ${width} ${height}`,role:'img','aria-label':state.day+' 200위 조회수 그래프'});
-    svg.append(svgNode('title',{},'기록이 없는 시간은 선이 끊어집니다. 각 점에 마우스를 올리거나 키보드로 이동하면 값을 확인할 수 있습니다.'));
+    const svg=svgNode('svg',{viewBox:`0 0 ${width} ${height}`,role:'group','aria-label':state.day+' 200위 조회수 그래프'});
+    svg.append(svgNode('title',{},'수집된 기록을 한 선으로 연결합니다. 각 점에 마우스를 올리거나 키보드로 이동하면 시각과 투베컷을 확인할 수 있습니다.'));
     for(let i=0;i<=4;i++){const value=lower+(upper-lower)*i/4;svg.append(svgNode('line',{x1:left,y1:y(value),x2:width-right,y2:y(value),class:'grid'}));svg.append(svgNode('text',{x:left-9,y:y(value)+4,'text-anchor':'end'},number(value)));}
     for(const h of [0,3,6,9,12,15,18,21,23])svg.append(svgNode('text',{x:x(h),y:height-14,'text-anchor':'middle'},h+'시'));
-    let path='',connected=false;
-    hours.forEach((record,h)=>{if(!record){connected=false;return;}path+=(connected?' L':' M')+x(h)+' '+y(record.cutlines['200'].views);connected=true;});
+    let path='';
+    hours.forEach((record,h)=>{if(!record)return;path+=(path?' L':'M')+x(h)+' '+y(record.cutlines['200'].views);});
     svg.append(svgNode('path',{d:path,class:'trace'}));
-    hours.forEach((record,h)=>{if(!record)return;const e=record.cutlines['200'],label=`${h}시 ${number(e.views)}회 · ${e.title}`+(e.actual_rank===200?'':` (${e.actual_rank}위 대체)`);const point=svgNode('circle',{cx:x(h),cy:y(e.views),r:5,class:'point',tabindex:0,'aria-label':label});point.append(svgNode('title',{},label));svg.append(point);});
-    $('chart').replaceChildren(svg);
+    const tooltip=node('div',undefined,'chart-tooltip');
+    tooltip.id='chart-tooltip';tooltip.hidden=true;tooltip.setAttribute('role','tooltip');
+    hours.forEach((record,h)=>{
+      if(!record)return;
+      const e=record.cutlines['200'],p=kstParts(record.timestamp);
+      const time=`${p.day} ${pad(p.hour)}:${pad(p.minute)}`;
+      const cut=`투베컷 ${number(e.views)}회`+(e.actual_rank===200?'':` (${e.actual_rank}위 대체)`);
+      const point=svgNode('g',{class:'chart-point',tabindex:0,'aria-label':time+' · '+cut,'aria-describedby':'chart-tooltip'});
+      point.append(svgNode('circle',{cx:x(h),cy:y(e.views),r:13,class:'point-hit'}),svgNode('circle',{cx:x(h),cy:y(e.views),r:5,class:'point'}));
+      const show=()=>{
+        tooltip.replaceChildren(node('div',time,'tooltip-time'),node('strong',cut));
+        tooltip.setAttribute('style',`left:clamp(100px, ${x(h)/width*100}%, calc(100% - 100px));top:${y(e.views)/height*100}%;`);
+        tooltip.hidden=false;
+      };
+      const hide=()=>{tooltip.hidden=true;};
+      point.addEventListener('mouseenter',show);point.addEventListener('mouseleave',hide);
+      point.addEventListener('focus',show);point.addEventListener('blur',hide);
+      point.addEventListener('click',show);
+      point.addEventListener('keydown',event=>{if(event.key==='Escape')hide();});
+      svg.append(point);
+    });
+    $('chart').replaceChildren(svg,tooltip);
   }
 
   function renderCutlines(record) {
